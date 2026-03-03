@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bildklassificering – TensorFlow.js</title>
+
+  <!-- TensorFlow.js (matchar din konverterare v4.22.0) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+
+  <!-- ======= Enkel, ren design ======= -->
+  <style>
+    :root{
+      --bg:#0b1020; --card:#141b34; --ink:#eaf0ff; --sub:#9fb3ff;
+      --accent:#6ea8ff; --accent-2:#4dd4ac; --muted:#a7b0c7; --ring:#2a3358;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; background: radial-gradient(1200px 800px at 10% -10%, #1b2347 0%, #0b1020 60%) fixed, var(--bg);
+      color:var(--ink); font: 16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+      -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    }
+    header{
+      max-width:1100px; margin:48px auto 24px; padding:0 20px;
+    }
+    .title{
+      display:flex; align-items:center; gap:.75rem; margin:0 0 .25rem 0;
+      font-size: clamp(1.4rem, 1.2rem + 1.2vw, 2.1rem); letter-spacing:.2px;
+    }
+    .badge{
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color:#07111a; font-weight:700; padding:.28rem .5rem; border-radius:.5rem; font-size:.8rem;
+    }
+    p.lead{margin:.2rem 0 0; color:var(--sub)}
+    main{max-width:1100px; margin:20px auto 80px; padding:0 20px;}
+    .grid{
+      display:grid; grid-template-columns: 1.1fr .9fr; gap:28px;
+    }
+    @media (max-width: 920px){ .grid{grid-template-columns: 1fr; } }
+
+    .card{
+      background: linear-gradient(160deg, #141b34, #10172c 60%);
+      border: 1px solid #1e2646; border-radius: 16px; padding: 18px 18px 16px;
+      box-shadow: 0 10px 40px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .card h2{margin:.1rem 0 10px; font-size:1.05rem; color:#dbe6ff; letter-spacing:.3px}
+    .row{display:flex; gap:12px; align-items:center; flex-wrap:wrap}
+    input[type="file"]{
+      appearance:none; border:1px dashed var(--ring); color:var(--ink); background:#0f1530;
+      padding:12px 12px; border-radius:12px; width:100%;
+    }
+    button{
+      all:unset; display:inline-flex; align-items:center; gap:.5rem; cursor:pointer;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color:#07111a; font-weight:700; padding:12px 16px; border-radius:12px;
+      box-shadow: 0 6px 24px rgba(110,168,255,.25);
+      transition: transform .06s ease, filter .15s ease;
+    }
+    button[disabled]{filter:grayscale(.4) brightness(.8); cursor:not-allowed}
+    button:not([disabled]):active{transform:translateY(1px)}
+    .muted{color:var(--muted); font-size:.92rem}
+    .preview{
+      margin-top:12px; border-radius:12px; border:1px solid #222a4f;
+      overflow:hidden; background:#0f1530; display:flex; justify-content:center;
+      align-items:center; min-height:240px;
+    }
+    img#preview{max-width:100%; height:auto; display:block}
+    .hidden{display:none}
+    progress{width:100%; height:10px; accent-color:var(--accent); background:#0f1530; border-radius:6px}
+    .kpi{
+      display:flex; gap:14px; flex-wrap:wrap; margin-top:10px
+    }
+    .pill{
+      background:#0f1530; border:1px solid var(--ring); border-radius:999px; padding:6px 10px; color:var(--sub)
+    }
+    ol#results{margin:.4rem 0 0 .9rem; padding:0}
+    ol#results li{margin:.15rem 0; padding:.2rem .25rem}
+    code{background:#0f1530; border:1px solid #1e2646; padding:.15rem .35rem; border-radius:6px}
+    footer{max-width:1100px; margin:24px auto 60px; padding:0 20px; color:var(--muted); font-size:.92rem}
+    .hint{opacity:.95}
+  </style>
+</head>
+<body>
+  <header>
+    <h1 class="title">Bildklassificering <span class="badge">TensorFlow.js</span></h1>
+    <p class="lead">Ladda upp en bild, så körs inferens i webbläsaren. Modellen ligger i
+      <code>tfjs_model/</code> och väntar sig  <strong>224×224×3</strong> (float32).</p>
+  </header>
+
+  <main class="grid">
+    <!-- Panel 1: Uppladdning / förhandsvisning -->
+    <section class="card">
+      <h2>1) Välj en bild</h2>
+      <div class="row">
+        <input type="file" id="fileInput" accept="image/*" />
+      </div>
+      <div class="preview">
+        <img id="preview" class="hidden" alt="Förhandsvisning av vald bild" />
+        <span id="noPreview" class="muted">Ingen bild vald ännu</span>
+      </div>
+      <div class="kpi">
+        <span class="pill">Indata: 224×224×3</span>
+        <span class="pill">Ut: 5 klasser</span>
+        <span class="pill">Logits → Softmax</span>
+      </div>
+    </section>
+
+    <!-- Panel 2: Inferens / resultat -->
+    <section class="card">
+      <h2>2) Klassificera</h2>
+      <div class="row" style="justify-content:space-between">
+        <button id="predictBtn" disabled>Tolka bilden</button>
+        <span id="status" class="muted">Modell laddas …</span>
+      </div>
+
+      <div style="margin:10px 0 8px">
+        <progress id="bar" max="100" value="0" class="hidden"></progress>
+      </div>
+
+      <ol id="results"></ol>
+
+      <p class="muted hint" style="margin-top:10px">
+        Tips: Om din träning använde annan normalisering, byt i koden till t.ex.
+        <code>div(127.5).sub(1.0)</code>. (Den här sidan använder 0–1‑skalning.) 
+      </p>
+    </section>
+  </main>
+
+  <footer>
+    <p>Modellen är ett Keras‑<em>layers‑model</em> konverterat till TensorFlow.js.
+       <code>weightsManifest</code> pekar ut <code>group1-shard1of3.bin</code>, <code>group1-shard2of3.bin</code>,
+       <code>group1-shard3of3.bin</code> i samma mapp som <code>model.json</code>. Sista lagret är
+       <code>Dense(units=5, activation="linear")</code> och träningskonfigurationen anger
+       <code>from_logits: true</code>. </p>
+  </footer>
+
+  <script>
+    // ===== Backend hint (valfritt): prova WebGL först för fart
+    (async () => {
+      try { await tf.setBackend('webgl'); await tf.ready(); } catch {}
+    })();
+
+    // ===== 1) GitHub RAW-länk till tfjs_model/model.json =====
+    // Ex: 'https://raw.githubusercontent.com/ArvidAhlinder/min-repo/main/tfjs_model/model.json'
+    const MODEL_URL =
+      'https://raw.githubusercontent.com/YOUR_GITHUB_USER/YOUR_REPO/YOUR_BRANCH/tfjs_model/model.json';
+
+    // ===== 2) Klassnamn (uppdatera så de matchar din träningsordning) =====
+    const LABELS = ['Class 0', 'Class 1', 'Class 2', 'Class 3', 'Class 4']; // units=5 
+
+    // ===== 3) Konstanter från modellen =====
+    const INPUT_SIZE = 224;  // [224,224,3] 
+    const NUM_CLASSES = 5;   // Dense units=5  
+    const FROM_LOGITS = true; // training_config.from_logits=true 
+
+    let model;
+    const statusEl = document.getElementById('status');
+    const barEl = document.getElementById('bar');
+    const fileInput = document.getElementById('fileInput');
+    const preview = document.getElementById('preview');
+    const noPreview = document.getElementById('noPreview');
+    const predictBtn = document.getElementById('predictBtn');
+    const resultsEl = document.getElementById('results');
+
+    function setStatus(t){ statusEl.textContent = t; }
+    function showBar(v){ barEl.classList.remove('hidden'); if (v!=null) barEl.value=v; }
+    function hideBar(){ barEl.classList.add('hidden'); barEl.value=0; }
+
+    // ========== Ladda modellen ==========
+    (async () => {
+      try {
+        setStatus('Laddar modell …');
+        showBar(10);
+        model = await tf.loadLayersModel(MODEL_URL); // tfjs hämtar automatiskt shardarna från samma mapp. 
+        await model.summary(); // no-op i prod, men säkerställer init av vikter i vissa envs
+        setStatus('Modell klar ✔');
+        predictBtn.disabled = false;
+      } catch (e) {
+        console.error(e);
+        setStatus('Kunde inte ladda modellen – kontrollera RAW‑URL & CORS (GitHub Raw).');
+      } finally {
+        hideBar();
+      }
+    })();
+
+    // ========== Förhandsvisa bild ==========
+    fileInput.addEventListener('change', () => {
+      const f = fileInput.files?.[0];
+      resultsEl.innerHTML = '';
+      if (!f) {
+        preview.classList.add('hidden'); noPreview.classList.remove('hidden');
+        return;
+      }
+      const url = URL.createObjectURL(f);
+      preview.src = url;
+      preview.onload = () => URL.revokeObjectURL(url);
+      preview.classList.remove('hidden'); noPreview.classList.add('hidden');
+    });
+
+    // ========== Preprocess (224×224, 0–1, batch) ==========
+    function preprocess(imgEl){
+      return tf.tidy(() => {
+        const x = tf.browser.fromPixels(imgEl).toFloat();
+        const r = tf.image.resizeBilinear(x, [INPUT_SIZE, INPUT_SIZE], true);
+        const norm = r.div(255);
+        return norm.expandDims(0); // [1,224,224,3]
+      });
+    }
+
+    // ========== Postprocess (Softmax vid logits, top-K) ==========
+    async function topK(tensor, k = Math.min(5, NUM_CLASSES)){
+      const probs = FROM_LOGITS ? tf.softmax(tensor) : tensor;
+      const data = await probs.data();
+      const list = Array.from(data).map((p,i)=>({i,p}));
+      list.sort((a,b)=>b.p - a.p);
+      return list.slice(0,k);
+    }
+
+    // ========== Kör inferens ==========
+    predictBtn.addEventListener('click', async () => {
+      resultsEl.innerHTML = '';
+      if (!preview.src) {
+        setStatus('Välj en bild först.'); return;
+      }
+      try {
+        setStatus('Kör inferens …'); showBar(30);
+        const x = preprocess(preview); showBar(60);
+        const logits = model.predict(x); showBar(80);
+        const top = await topK(logits);
+        tf.dispose([x, logits]); showBar(100);
+        setStatus('Klar ✔'); setTimeout(hideBar, 400);
+
+        // Rendera resultat
+        for (const {i, p} of top) {
+          const li = document.createElement('li');
+          const label = LABELS[i] ?? `Class ${i}`;
+          li.textContent = `${label}: ${(p*100).toFixed(2)}%`;
+          resultsEl.appendChild(li);
+        }
+      } catch (e) {
+        console.error(e); setStatus('Fel vid inferens.');
+        hideBar();
+      }
+    });
+  </script>
+</body>
+</html>
