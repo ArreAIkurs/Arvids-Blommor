@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Bildklassificering – TensorFlow.js</title>
 
-  <!-- ✅ Rättad TF.js-laddning -->
+  <!-- ✅ Korrekt TF.js-laddning -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 
   <style>
     :root{
       --bg:#0b1020; --card:#141b34; --ink:#eaf0ff; --sub:#9fb3ff;
-      --accent:#6ea8ff; --accent-2:#4dd4ac; --muted:#a7b0c7; --ring:#2a3358;
+      --accent:#6ea8ff; --accent-2:#4dd4ac; --muted:#a7b0c7; --ring:#2a3358; --error:#ff6b6b;
     }
     *{box-sizing:border-box}
     html,body{height:100%}
@@ -19,15 +19,15 @@
       margin:0; background: radial-gradient(1200px 800px at 10% -10%, #1b2347 0%, #0b1020 60%) fixed, var(--bg);
       color:var(--ink); font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
     }
-    header{max-width:1100px; margin:48px auto 24px; padding:0 20px;}
+    header{max-width:1100px; margin:36px auto 12px; padding:0 20px;}
     .title{display:flex; align-items:center; gap:.75rem; margin:0 0 .25rem 0;
       font-size:clamp(1.4rem, 1.2rem + 1.2vw, 2.1rem);}
     .badge{background:linear-gradient(135deg, var(--accent), var(--accent-2));
       color:#07111a; font-weight:700; padding:.28rem .5rem; border-radius:.5rem; font-size:.8rem;}
     p.lead{margin:.2rem 0 0; color:var(--sub)}
-    main{max-width:1100px; margin:20px auto 80px; padding:0 20px;}
-    .grid{display:grid; grid-template-columns:1.1fr .9fr; gap:28px;}
-    @media (max-width:920px){.grid{grid-template-columns:1fr}}
+    main{max-width:1100px; margin:16px auto 80px; padding:0 20px;}
+    .grid{display:grid; grid-template-columns:1.1fr .9fr; gap:24px;}
+    @media (max-width:1000px){.grid{grid-template-columns:1fr}}
     .card{
       background:linear-gradient(160deg, #141b34, #10172c 60%);
       border:1px solid #1e2646; border-radius:16px; padding:18px 18px 16px;
@@ -49,8 +49,7 @@
     button:not([disabled]):active{transform:translateY(1px)}
     .muted{color:var(--muted); font-size:.92rem}
     .preview{margin-top:12px; border-radius:12px; border:1px solid #222a4f;
-      overflow:hidden; background:#0f1530; display:flex; justify-content:center;
-      align-items:center; min-height:240px;}
+      overflow:hidden; background:#0f1530; display:flex; justify-content:center; align-items:center; min-height:240px;}
     img#preview{max-width:100%; height:auto; display:block}
     .hidden{display:none}
     progress{width:100%; height:10px; accent-color:var(--accent); background:#0f1530; border-radius:6px}
@@ -61,6 +60,19 @@
     code{background:#0f1530; border:1px solid #1e2646; padding:.15rem .35rem; border-radius:6px}
     footer{max-width:1100px; margin:24px auto 60px; padding:0 20px; color:var(--muted); font-size:.92rem}
     .hint{opacity:.95}
+
+    /* Debug-panel */
+    .debug{max-width:1100px; margin:0 auto 24px; padding:0 20px;}
+    .debug .card{padding:0}
+    .debugHeader{display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid #1e2646}
+    .debugHeader h2{margin:0; font-size:1rem}
+    .controls{display:flex; gap:8px; align-items:center}
+    .toggle{display:inline-flex; gap:6px; align-items:center; font-size:.92rem}
+    .debugBody{padding:12px 16px}
+    textarea#log{width:100%; height:220px; resize:vertical; background:#050918; color:#d2ddff;
+      border:0; outline:none; font:12.5px/1.4 ui-monospace,"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; padding:10px}
+    .label{font-size:.85rem; color:var(--sub)}
+    .err{color:var(--error)}
   </style>
 </head>
 <body>
@@ -70,7 +82,37 @@
       <code>tfjs_model/</code> och förväntar <strong>224×224×3</strong> (float32).</p>
   </header>
 
+  <!-- Debug-panel -->
+  <section class="debug">
+    <div class="card">
+      <div class="debugHeader">
+        <h2>Debug & Självtest</h2>
+        <div class="controls">
+          <label class="toggle">
+            <input id="useRaw" type="checkbox" />
+            <span>Använd RAW‑URL</span>
+          </label>
+          <input id="rawBase" class="muted" style="min-width:380px; padding:6px 8px; border-radius:8px; border:1px solid #1e2646; background:#0f1530; color:var(--ink)"
+                 placeholder="https://raw.githubusercontent.com/<user>/<repo>/<branch> (utan /tfjs_model/...)" />
+          <button id="selfTestBtn">Kör självtest</button>
+          <button id="clearBtn" title="Rensa logg">Rensa</button>
+        </div>
+      </div>
+      <div class="debugBody">
+        <div class="row" style="gap:16px; margin-bottom:10px">
+          <div class="pill">URL-läge: <span id="modeLabel">Relativ</span></div>
+          <div class="pill">TF.js: <span id="tfVer">okänd</span></div>
+          <div class="pill">Backend: <span id="backend">okänd</span></div>
+          <div class="pill">Origin: <span id="origin">okänd</span></div>
+        </div>
+        <div class="label">Logg</div>
+        <textarea id="log" spellcheck="false" readonly></textarea>
+      </div>
+    </div>
+  </section>
+
   <main class="grid">
+    <!-- Panel 1: Uppladdning / förhandsvisning -->
     <section class="card">
       <h2>1) Välj en bild</h2>
       <div class="row">
@@ -87,6 +129,7 @@
       </div>
     </section>
 
+    <!-- Panel 2: Inferens / resultat -->
     <section class="card">
       <h2>2) Klassificera</h2>
       <div class="row" style="justify-content:space-between">
@@ -101,34 +144,32 @@
       <ol id="results"></ol>
 
       <p class="muted hint" style="margin-top:10px">
-        Tips: Om din träning normaliserade till [-1, 1], byt i koden till
-        <code>div(127.5).sub(1.0)</code> istället för <code>div(255)</code>.
+        Tränade du med [-1, 1]-normalisering? Byt i koden till <code>div(127.5).sub(1.0)</code> i stället för <code>div(255)</code>.
       </p>
     </section>
   </main>
 
   <footer>
-    <p>Modellen är ett Keras‑<em>layers‑model</em> konverterat till TF.js och har <code>Dense(units=5)</code> utan aktivering (logits).
+    <p>Modellen är ett Keras‑<em>layers‑model</em> konverterat till TF.js och har <code>Dense(units=5)</code> utan aktivering.
        Vi applicerar <code>softmax</code> i klienten.</p>
   </footer>
 
   <script>
-    // ===== Backend hint (valfritt): prova WebGL först
-    (async () => {
-      try { await tf.setBackend('webgl'); await tf.ready(); console.log('TF backend:', tf.getBackend()); } catch {}
-    })();
+    // ======== Debug logger och fång av fel ========
+    const logEl = document.getElementById('log');
+    const append = (msg, isErr=false) => {
+      const time = new Date().toLocaleTimeString();
+      logEl.value += `[${time}] ${isErr ? '[ERR] ' : ''}${msg}\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+    };
+    const origLog = console.log, origWarn = console.warn, origErr = console.error;
+    console.log = (...a)=>{ append(a.join(' ')); origLog(...a); };
+    console.warn = (...a)=>{ append(a.join(' ')); origWarn(...a); };
+    console.error = (...a)=>{ append(a.join(' '), true); origErr(...a); };
+    window.addEventListener('error', (e)=> append(`window.onerror: ${e.message} @ ${e.filename}:${e.lineno}:${e.colno}`, true));
+    window.addEventListener('unhandledrejection', (e)=> append(`Unhandled promise rejection: ${e.reason}`, true));
 
-    // ✅ Relativ sökväg (slipper CORS när index.html & tfjs_model/ ligger i samma repo/server)
-    const MODEL_URL = './tfjs_model/model.json';
-
-    // Fyll dessa med dina riktiga etiketter i rätt ordning
-    const LABELS = ['Class 0', 'Class 1', 'Class 2', 'Class 3', 'Class 4'];
-
-    const INPUT_SIZE = 224;
-    const NUM_CLASSES = 5;
-    const FROM_LOGITS = true;
-
-    let model;
+    // ======== UI-element ========
     const statusEl = document.getElementById('status');
     const barEl = document.getElementById('bar');
     const fileInput = document.getElementById('fileInput');
@@ -136,18 +177,209 @@
     const noPreview = document.getElementById('noPreview');
     const predictBtn = document.getElementById('predictBtn');
     const resultsEl = document.getElementById('results');
+    const useRawEl = document.getElementById('useRaw');
+    const rawBaseEl = document.getElementById('rawBase');
+    const modeLabel = document.getElementById('modeLabel');
+    const tfVer = document.getElementById('tfVer');
+    const backend = document.getElementById('backend');
+    const origin = document.getElementById('origin');
+    document.getElementById('clearBtn').onclick = ()=> (logEl.value = '');
 
+    // ======== Konstanter för modellen ========
+    const INPUT_SIZE = 224;
+    const NUM_CLASSES = 5;
+    const FROM_LOGITS = true;
+
+    // Standard: relativ URL (slipper CORS när hostas på samma origin, t.ex. GitHub Pages)
+    const RELATIVE_URL = './tfjs_model/model.json';
+
+    // RAW-bas byggs till: `${RAW_BASE}/tfjs_model/model.json`
+    let RAW_BASE = '';
+
+    // Hjälpfunktioner
     function setStatus(t){ statusEl.textContent = t; }
     function showBar(v){ barEl.classList.remove('hidden'); if (v!=null) barEl.value=v; }
     function hideBar(){ barEl.classList.add('hidden'); barEl.value=0; }
 
-    // ===== Ladda modellen
+    function currentModelUrl(){
+      if (useRawEl.checked && RAW_BASE) return `${RAW_BASE.replace(/\/$/, '')}/tfjs_model/model.json`;
+      return RELATIVE_URL;
+    }
+
+    useRawEl.addEventListener('change', () => {
+      modeLabel.textContent = useRawEl.checked ? 'RAW' : 'Relativ';
+      append(`Växlar URL-läge till ${modeLabel.textContent}`);
+    });
+    rawBaseEl.addEventListener('change', ()=> {
+      RAW_BASE = rawBaseEl.value.trim();
+      append(`RAW-bas satt till: ${RAW_BASE || '(tom)'}`);
+    });
+
+    // ======== Miljöinfo ========
+    origin.textContent = location.origin || location.protocol;
+    if (location.protocol === 'file:') {
+      append('VARNING: Sidan körs från file://. Fetch kan blockeras. Använd t.ex. GitHub Pages eller en lokal dev-server (Live Server).', true);
+    }
+
+    // ======== Init TF backend ========
     (async () => {
+      try { await tf.setBackend('webgl'); await tf.ready(); } catch {}
+      tfVer.textContent = (tf?.version?.tfjs) || 'okänd';
+      backend.textContent = tf?.getBackend?.() || 'okänd';
+      console.log('TF.js version:', tf.version.tfjs, 'Backend:', tf.getBackend());
+    })().catch(e => console.error(e));
+
+    // ======== Modell & inferens ========
+    let model;
+
+    // Preprocess (224×224, 0–1, batch)
+    function preprocess(imgEl){
+      return tf.tidy(() => {
+        const x = tf.browser.fromPixels(imgEl).toFloat();
+        const r = tf.image.resizeBilinear(x, [INPUT_SIZE, INPUT_SIZE], true);
+        const norm = r.div(255);
+        return norm.expandDims(0); // [1,224,224,3]
+      });
+    }
+
+    // Postprocess (softmax om logits)
+    async function topK(tensor, k = Math.min(5, NUM_CLASSES)){
+      const probs = FROM_LOGITS ? tf.softmax(tensor) : tensor;
+      const data = await probs.data();
+      const list = Array.from(data).map((p,i)=>({i,p}));
+      list.sort((a,b)=>b.p - a.p);
+      return list.slice(0,k);
+    }
+
+    // Ladda modellen
+    async function loadModel(){
+      const url = currentModelUrl();
       try {
-        setStatus('Laddar modell …');
-        showBar(10);
-        console.log('Försöker ladda model från', MODEL_URL);
-        model = await tf.loadLayersModel(MODEL_URL);
-        console.log('Modell laddad:', model.inputs?.[0]?.shape, '→', model.outputs?.[0]?.shape);
-        setStatus('Modell klar ✔');
-        predictBtn.disabled = false;
+        setStatus('Laddar modell …'); showBar(10);
+        console.log('Försöker ladda model från:', url);
+        model = await tf.loadLayersModel(url);
+        console.log('Modell OK. Input:', model.inputs?.[0]?.shape, 'Output:', model.outputs?.[0]?.shape);
+        setStatus('Modell klar ✔'); predictBtn.disabled = false;
+      } catch (e) {
+        console.error('Fel vid laddning av modellen:', e);
+        setStatus('Kunde inte ladda modellen – se debug‑logg.');
+      } finally { hideBar(); }
+    }
+
+    // Kör inferens
+    predictBtn.addEventListener('click', async () => {
+      resultsEl.innerHTML = '';
+      if (!preview.src) { setStatus('Välj en bild först.'); return; }
+      try {
+        setStatus('Kör inferens …'); showBar(30);
+        const x = preprocess(preview); showBar(60);
+        const logits = model.predict(x); showBar(80);
+        const top = await topK(logits);
+        tf.dispose([x, logits]); showBar(100);
+        setStatus('Klar ✔'); setTimeout(hideBar, 400);
+
+        // Etiketter – uppdatera till dina riktiga
+        const LABELS = ['Class 0', 'Class 1', 'Class 2', 'Class 3', 'Class 4'];
+        for (const {i, p} of top) {
+          const li = document.createElement('li');
+          const label = LABELS[i] ?? `Class ${i}`;
+          li.textContent = `${label}: ${(p*100).toFixed(2)}%`;
+          resultsEl.appendChild(li);
+        }
+      } catch (e) {
+        console.error('Fel vid inferens:', e); setStatus('Fel vid inferens.'); hideBar();
+      }
+    });
+
+    // Förhandsvisa bild
+    fileInput.addEventListener('change', () => {
+      const f = fileInput.files?.[0];
+      resultsEl.innerHTML = '';
+      if (!f) {
+        preview.classList.add('hidden'); noPreview.classList.remove('hidden');
+        return;
+      }
+      const url = URL.createObjectURL(f);
+      preview.src = url;
+      preview.onload = () => URL.revokeObjectURL(url);
+      preview.classList.remove('hidden'); noPreview.classList.add('hidden');
+    });
+
+    // ======== Självtest: verifiera att model.json och .bin nås ========
+    async function headOrGet(url){
+      // En del origin blockerar HEAD; vi gör GET men abortar efter headers.
+      const controller = new AbortController();
+      const t = setTimeout(()=>controller.abort(), 15000);
+      try {
+        const res = await fetch(url, { method:'GET', signal: controller.signal });
+        const len = res.headers.get('content-length');
+        return { ok: res.ok, status: res.status, type: res.type, len: len ? Number(len) : null, res };
+      } finally { clearTimeout(t); }
+    }
+
+    async function selfTest(){
+      const url = currentModelUrl();
+      append(`— Självtest start —`);
+      append(`Model URL: ${url}`);
+
+      // 0) Finns tf?
+      if (typeof tf === 'undefined') {
+        append('TF.js är inte laddat (tf === undefined). Kontrollera <script src="...tf.min.js">.', true);
+        return;
+      }
+
+      // 1) Testa att hämta model.json "manuellt"
+      try {
+        const meta = await headOrGet(url);
+        append(`model.json → status ${meta.status}, type=${meta.type}, length=${meta.len ?? 'okänd'}`);
+        if (!meta.ok) {
+          append(`Misslyckades hämta model.json (${meta.status}). Är sökvägen/hostningen korrekt?`, true);
+          return;
+        }
+        const json = await meta.res.clone().json();
+        append(`model.json läst. Nycklar: ${Object.keys(json).slice(0,5).join(', ')}${Object.keys(json).length>5?'…':''}`);
+
+        // 2) Läs weightsManifest och försök hämta varje bin
+        const groups = (json.weightsManifest && json.weightsManifest[0]) ? json.weightsManifest : json.modelTopology?.weightsManifest;
+        if (!groups) {
+          append('Saknar weightsManifest i model.json.', true);
+          return;
+        }
+        let paths = [];
+        for (const g of groups) { if (g.paths) paths = paths.concat(g.paths); }
+        if (!paths.length) {
+          append('weightsManifest innehåller inga paths.', true);
+          return;
+        }
+        append(`Hittade ${paths.length} viktfil(er): ${paths.join(', ')}`);
+
+        // Bas-URL för vikter = samma mapp som model.json
+        const base = url.replace(/\/model\.json(\?.*)?$/,'/');
+        for (const p of paths) {
+          const binUrl = base + p;
+          const m = await headOrGet(binUrl);
+          append(`BIN ${p} → status ${m.status}, length=${m.len ?? 'okänd'}` + (!m.ok ? '  ✖' : '  ✔'));
+          if (!m.ok) {
+            append(`Kunde inte hämta ${p}. Kontrollera att filen finns i tfjs_model/ och att filnamn matchar exakt (skiftläge viktigt).`, true);
+            return;
+          }
+        }
+        append('Alla viktfiler nåbara. Försöker ladda modellen via tf.loadLayersModel…');
+        await loadModel();
+        append('— Självtest klart —');
+      } catch (e) {
+        console.error('Självtestfel:', e);
+        append(`Självtest fel: ${e}`, true);
+      }
+    }
+
+    document.getElementById('selfTestBtn').addEventListener('click', selfTest);
+
+    // ======== Autoload vid start (relativt läge) ========
+    (async () => {
+      // Om du redan kör på GitHub Pages räcker relativ URL
+      await loadModel();
+    })();
+  </script>
+</body>
+</html>
