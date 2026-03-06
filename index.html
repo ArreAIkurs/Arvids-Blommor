@@ -5,23 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Bildklassificering – TensorFlow.js</title>
 
-  <!-- ✅ KORREKT TF.js (måste laddas innan vår egen kod körs) -->
+  <!-- TF.js måste laddas före vår egen kod -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 
   <style>
-    :root{
-      --bg:#0b1020; --card:#141b34; --ink:#eaf0ff; --sub:#9fb3ff;
-      --accent:#6ea8ff; --accent-2:#4dd4ac; --muted:#a7b0c7; --ring:#2a3358; --error:#ff6b6b;
-    }
+    :root{ --bg:#0b1020; --card:#141b34; --ink:#eaf0ff; --sub:#9fb3ff;
+           --accent:#6ea8ff; --accent-2:#4dd4ac; --muted:#a7b0c7; --ring:#2a3358; --error:#ff6b6b; }
     *{box-sizing:border-box} html,body{height:100%}
     body{margin:0; background: radial-gradient(1200px 800px at 10% -10%, #1b2347 0%, #0b1020 60%) fixed, var(--bg);
          color:var(--ink); font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
     header{max-width:1100px; margin:36px auto 12px; padding:0 20px;}
     .title{display:flex; align-items:center; gap:.75rem; margin:0 0 .25rem 0;
            font-size:clamp(1.4rem, 1.2rem + 1.2vw, 2.1rem);}
-    .badge{background:linear-gradient(135deg, var(--accent), var(--accent-2));
-           color:#07111a; font-weight:700; padding:.28rem .5rem; border-radius:.5rem; font-size:.8rem;}
-    p.lead{margin:.2rem 0 0; color:var(--sub)} main{max-width:1100px; margin:16px auto 80px; padding:0 20px;}
+    .badge{background:linear-gradient(135deg, var(--accent), var(--accent-2)); color:#07111a;
+           font-weight:700; padding:.28rem .5rem; border-radius:.5rem; font-size:.8rem;}
+    p.lead{margin:.2rem 0 0; color:var(--sub)}
+    main{max-width:1100px; margin:16px auto 80px; padding:0 20px;}
     .grid{display:grid; grid-template-columns:1.1fr .9fr; gap:24px;} @media (max-width:1000px){.grid{grid-template-columns:1fr}}
     .card{background:linear-gradient(160deg, #141b34, #10172c 60%); border:1px solid #1e2646; border-radius:16px; padding:18px;
           box-shadow:0 10px 40px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);}
@@ -65,7 +64,7 @@
       <code>tfjs_model/</code> och förväntar <strong>224×224×3</strong> (float32).</p>
   </header>
 
-  <!-- 🔎 Debug-panel -->
+  <!-- Debug-panel -->
   <section class="debug">
     <div class="card">
       <div class="debugHeader">
@@ -111,6 +110,7 @@
         <span id="status" class="muted">Modell laddas …</span>
       </div>
       <div style="margin:10px 0 8px"><progress id="bar" max="100" value="0" class="hidden"></progress></div>
+      <!-- Sammanfattningsmening injiceras före denna lista -->
       <ol id="results"></ol>
     </section>
   </main>
@@ -156,11 +156,12 @@
     const NUM_CLASSES = 5;
     const FROM_LOGITS = true;
 
-    // ===== URL-lägen =====
-    // OBS: '?v=1' bustar cache när du uppdaterar model.json på Pages
-    const RELATIVE_URL = './tfjs_model/model.json?v=1';
-    let RAW_BASE = ''; // t.ex. https://raw.githubusercontent.com/<user>/<repo>/main
+    // ===== Svenska etiketter (justera ordningen om din träning var annorlunda) =====
+    const LABELS = ['prästkrage', 'maskros', 'ros', 'solros', 'tulpan'];
 
+    // ===== URL-lägen =====
+    const RELATIVE_URL = './tfjs_model/model.json?v=1';
+    let RAW_BASE = '';
     function setStatus(t){ statusEl.textContent = t; }
     function showBar(v){ barEl.classList.remove('hidden'); if (v!=null) barEl.value=v; }
     function hideBar(){ barEl.classList.add('hidden'); barEl.value=0; }
@@ -177,8 +178,7 @@
       append(`RAW-bas satt till: ${RAW_BASE || '(tom)'}`);
     });
 
-    // ===== Miljöinfo =====
-    origin.textContent = location.origin || location.protocol;
+    // ===== Init TF backend =====
     (async () => {
       try { await tf.setBackend('webgl'); await tf.ready(); } catch {}
       tfVer.textContent = (tf?.version?.tfjs) || 'okänd';
@@ -186,14 +186,13 @@
       console.log('TF.js version:', tf.version.tfjs, 'Backend:', tf.getBackend());
     })();
 
-    // ===== Modell & inferens =====
     let model;
     function preprocess(imgEl){
       return tf.tidy(() => {
         const x = tf.browser.fromPixels(imgEl).toFloat();
         const r = tf.image.resizeBilinear(x, [INPUT_SIZE, INPUT_SIZE], true);
         const norm = r.div(255);
-        return norm.expandDims(0); // [1,224,224,3]
+        return norm.expandDims(0);
       });
     }
     async function topK(tensor, k = Math.min(5, NUM_CLASSES)){
@@ -212,7 +211,6 @@
       try {
         setStatus('Laddar modell …'); showBar(10);
         console.log('Försöker ladda model från:', url);
-        // Förkontroll (bättre fel än tyst hängning)
         await withTimeout(fetch(url, {cache:'no-store'}).then(r=>{
           if(!r.ok) throw new Error(`HTTP ${r.status} på model.json`);
           return r.text();
@@ -226,8 +224,15 @@
         setStatus('Kunde inte ladda modellen – se debug‑logg.');
       } finally { hideBar(); }
     }
+    (async () => { await loadModel(); })();
+
+    // ===== Klick: inferens + svensk utmatning =====
     predictBtn.addEventListener('click', async () => {
       resultsEl.innerHTML = '';
+      // Ta bort ev. gammal summary precis innan listan
+      const oldSummary = resultsEl.previousElementSibling;
+      if (oldSummary && oldSummary.tagName === 'P') oldSummary.remove();
+
       if (!preview.src) { setStatus('Välj en bild först.'); return; }
       try {
         setStatus('Kör inferens …'); showBar(30);
@@ -236,26 +241,72 @@
         const top = await topK(logits);
         tf.dispose([x, logits]); showBar(100);
         setStatus('Klar ✔'); setTimeout(hideBar, 400);
-        const LABELS = ['Class 0', 'Class 1', 'Class 2', 'Class 3', 'Class 4'];
-        for (const {i, p} of top) {
+
+        // Topp-1 mening på svenska
+        const best = top[0];
+        const bestLabel = LABELS[best.i] ?? `klass ${best.i}`;
+        const bestPct = (best.p * 100).toFixed(1);
+
+        const summary = document.createElement('p');
+        summary.style.margin = '0 0 8px 0';
+        summary.innerHTML = `<strong>${bestPct}% chans</strong> att det är en <strong>${bestLabel}</strong>.`;
+        resultsEl.parentElement.insertBefore(summary, resultsEl);
+
+        // Lista (topp-5) med svenska namn + staplar
+        resultsEl.innerHTML = '';
+        top.forEach(({ i, p }) => {
           const li = document.createElement('li');
-          li.textContent = `${LABELS[i] ?? `Class ${i}`}: ${(p*100).toFixed(2)}%`;
+          const label = LABELS[i] ?? `klass ${i}`;
+          const pct = (p * 100).toFixed(2);
+
+          const row = document.createElement('div');
+          row.style.display = 'flex';
+          row.style.alignItems = 'center';
+          row.style.gap = '10px';
+
+          const text = document.createElement('span');
+          text.textContent = `${label}: ${pct}%`;
+          text.style.minWidth = '180px';
+
+          const bar = document.createElement('div');
+          bar.style.flex = '1';
+          bar.style.height = '8px';
+          bar.style.borderRadius = '999px';
+          bar.style.background = '#0f1530';
+          bar.style.border = '1px solid #1e2646';
+
+          const fill = document.createElement('div');
+          fill.style.height = '100%';
+          fill.style.width = `${Math.max(1, Math.round(p * 100))}%`;
+          fill.style.borderRadius = '999px';
+          fill.style.background = 'linear-gradient(135deg, var(--accent), var(--accent-2))';
+
+          bar.appendChild(fill);
+          row.appendChild(text);
+          row.appendChild(bar);
+          li.appendChild(row);
           resultsEl.appendChild(li);
-        }
+        });
+
       } catch (e) {
         console.error('Fel vid inferens:', e); setStatus('Fel vid inferens.'); hideBar();
       }
     });
+
+    // ===== Förhandsvisning =====
     fileInput.addEventListener('change', () => {
       const f = fileInput.files?.[0];
       resultsEl.innerHTML = '';
+      const oldSummary = resultsEl.previousElementSibling;
+      if (oldSummary && oldSummary.tagName === 'P') oldSummary.remove();
+
       if (!f) { preview.classList.add('hidden'); noPreview.classList.remove('hidden'); return; }
       const url = URL.createObjectURL(f);
       preview.src = url; preview.onload = () => URL.revokeObjectURL(url);
       preview.classList.remove('hidden'); noPreview.classList.add('hidden');
     });
 
-    // ===== Självtest: verifiera model.json och alla .bin =====
+    // ===== Självtest (kvar, ifall du vill felsöka) =====
     async function fetchMeta(url){
       const controller = new AbortController();
       const t = setTimeout(()=>controller.abort(), 15000);
@@ -266,36 +317,30 @@
       } finally { clearTimeout(t); }
     }
     async function selfTest(){
-      const url = currentModelUrl();
+      const url = (useRawEl.checked && rawBaseEl.value.trim())
+        ? `${rawBaseEl.value.trim().replace(/\/$/, '')}/tfjs_model/model.json?v=1`
+        : RELATIVE_URL;
+
       append(`— Självtest start —`);
       append(`Model URL: ${url}`);
-      if (typeof tf === 'undefined') { append('TF.js är inte laddat (tf === undefined).', true); return; }
       try {
         const meta = await fetchMeta(url);
         append(`model.json → status ${meta.status}, type=${meta.type}, length=${meta.len ?? 'okänd'}`);
         if (!meta.ok) { append(`Misslyckades hämta model.json (${meta.status}).`, true); return; }
         const json = await meta.res.clone().json();
-        append(`model.json läst. Nycklar: ${Object.keys(json).slice(0,5).join(', ')}${Object.keys(json).length>5?'…':''}`);
         const wm = json.weightsManifest || (json.modelTopology && json.modelTopology.weightsManifest);
-        if (!wm) { append('Saknar weightsManifest i model.json.', true); return; }
-        let paths = []; for (const g of wm) { if (g.paths) paths = paths.concat(g.paths); }
-        if (!paths.length) { append('weightsManifest innehåller inga paths.', true); return; }
-        append(`Hittade ${paths.length} viktfil(er): ${paths.join(', ')}`);
+        let paths = []; for (const g of (wm || [])) if (g.paths) paths = paths.concat(g.paths);
+        append(`Hittade ${paths.length} viktfil(er): ${paths.join(', ') || '(inga)'}`
+          + (paths.length ? '' : '  ✖'));
         const base = url.replace(/\/model\.json(\?.*)?$/,'/');
         for (const p of paths) {
-          const binUrl = base + p;
-          const m = await fetchMeta(binUrl);
+          const m = await fetchMeta(base + p);
           append(`BIN ${p} → status ${m.status}, length=${m.len ?? 'okänd'}` + (!m.ok ? '  ✖' : '  ✔'));
-          if (!m.ok) { append(`Kunde inte hämta ${p}.`, true); return; }
         }
-        append('Alla viktfiler nåbara. Försöker ladda modellen…'); await loadModel();
         append('— Självtest klart —');
-      } catch (e) { console.error('Självtestfel:', e); append(`Självtest fel: ${e}`, true); }
+      } catch (e) { console.error(e); append(`Självtest fel: ${e}`, true); }
     }
     document.getElementById('selfTestBtn').addEventListener('click', selfTest);
-
-    // ===== Autoload =====
-    (async () => { await loadModel(); })();
   </script>
 </body>
 </html>
